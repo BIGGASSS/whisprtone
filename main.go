@@ -43,6 +43,10 @@ func main() {
 	}
 
 	transcript := utils.GetTranscript("audio.wav", apiKey)
+	cleaned := utils.PostProcess(transcript, apiKey)
 	fmt.Println("Transcript: " + transcript)
-	fmt.Println("Post-process: " + utils.PostProcess(transcript, apiKey))
+	fmt.Println("Post-process: " + cleaned)
+
+	utils.Copy(cleaned)
+	fmt.Println("Copied to clipboard")
 }
