@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/eiannone/keyboard"
 	"github.com/joho/godotenv"
 	"log"
 	"os"
@@ -15,7 +16,29 @@ func main() {
 
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 
-	if err := utils.ConstructAudio("audio.wav", 5); err != nil {
+	// Open keyboard for keybind detection
+	if err := keyboard.Open(); err != nil {
+		log.Fatal(err)
+	}
+	defer keyboard.Close()
+
+	stopCh := make(chan struct{})
+
+	// Key listener goroutine: press ESC to stop recording
+	go func() {
+		for {
+			_, key, err := keyboard.GetKey()
+			if err != nil {
+				log.Fatal(err)
+			}
+			if key == keyboard.KeyEsc {
+				close(stopCh)
+				return
+			}
+		}
+	}()
+
+	if err := utils.RecordUntil("audio.wav", stopCh); err != nil {
 		panic(err)
 	}
 

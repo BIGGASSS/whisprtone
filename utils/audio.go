@@ -81,7 +81,7 @@ func writeWavHeader(file *os.File, dataSize int, sampleRate int, channels int, b
    return nil
 }
 
-func ConstructAudio(filename string, duration int) error {
+func RecordUntil(filename string, stopCh <-chan struct{}) error {
  	const (
         sampleRate    = 48000
         channels      = 1
@@ -91,45 +91,69 @@ func ConstructAudio(filename string, duration int) error {
 	mic, err := StartMic()
     if err != nil {
         return err
-    } else {
-    	fmt.Println("Record started")
     }
-    defer mic.Close()
 
     file, err := os.Create(filename)
     if err != nil {
         return err
     }
-    defer file.Close()
 
-    dataSize := sampleRate * channels * bitsPerSample / 8 * duration
+    // Write placeholder 44-byte WAV header (will fix sizes after recording stops)
+    header := make([]byte, 44)
+    if _, err := file.Write(header); err != nil {
+        file.Close()
+        return err
+    }
 
+    fmt.Println("Recording... (press ESC to stop)")
+
+    // Recording goroutine
+    done := make(chan error, 1)
+    go func() {
+        buf := make([]byte, 1920)
+        for {
+            err := mic.ReadFrame(buf)
+            if err != nil {
+                done <- err
+                return
+            }
+            if _, err := file.Write(buf); err != nil {
+                done <- err
+                return
+            }
+        }
+    }()
+
+    // Wait for stop signal
+    <-stopCh
+
+    fmt.Println("Recording stopped")
+
+    // Kill the mic process to unblock ReadFrame
+    mic.Close()
+
+    // Wait for the recording goroutine to finish (error is expected from killed process)
+    <-done
+
+    // Determine data size (everything after the 44-byte header)
+    fileInfo, err := file.Stat()
+    if err != nil {
+        file.Close()
+        return err
+    }
+    dataSize := int(fileInfo.Size() - 44)
+
+    // Seek back and write the real WAV header with correct sizes
+    if _, err := file.Seek(0, 0); err != nil {
+        file.Close()
+        return err
+    }
     if err := writeWavHeader(file, dataSize, sampleRate, channels, bitsPerSample); err != nil {
-    	return err
+        file.Close()
+        return err
     }
 
-    buf := make([]byte, 1920)
-    bytesWritten := 0
-
-    for bytesWritten < dataSize {
-        err := mic.ReadFrame(buf)
-        if err != nil {
-        	return err
-        }
-
-        remaining := dataSize - bytesWritten
-        if len(buf) > remaining {
-           buf = buf[:remaining]
-        }
-
-        n, err := file.Write(buf)
-        if err != nil {
-        	return err
-        }
-
-        bytesWritten += n
-    }
-
-    fmt.Println("Record ended")
+    file.Close()
+    fmt.Println("Saved", filename)
     return nil
 }
