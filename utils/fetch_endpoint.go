@@ -1,17 +1,19 @@
 package utils
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
-	"bytes"
+	"strings"
 )
 
 func GetTranscript(file string, apiKey string) string {
 	audioBase64 := EncodeAudio(file)
 
  	payload := map[string]any {
-        "model": "openai/whisper-1",
+        "model": "openai/whisper-large-v3",
         "input_audio": map[string]string {
 	        "data": audioBase64,
 	        "format": "mp3",
@@ -43,7 +45,7 @@ func GetTranscript(file string, apiKey string) string {
     if err := json.Unmarshal(respBody, &respText);  err != nil {
     	panic(err)
     }
-    return respText["text"].(string)
+    return strings.TrimSpace(respText["text"].(string))
 }
 
 func PostProcess(transcript string, apiKey string) string {
@@ -111,6 +113,11 @@ Raw output:
     if err := json.Unmarshal(respBody, &respText);  err != nil { panic(err) }
     choices := respText["choices"].([]any)
     message := choices[0].(map[string]any)["message"].(map[string]any)
-    content := message["content"].(string)
+    content := strings.TrimSpace(message["content"].(string))
+
+    if content == "EMPTY" {
+        log.Fatal("Empty audio file")
+    }
+    
     return content
 }
